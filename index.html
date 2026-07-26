@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>호프(HOPE) 최종 관객수 예측 리포트</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+  :root {
+    color-scheme: light;
+    --surface-1: #fcfcfb;
+    --page: #f9f9f7;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #898781;
+    --gridline: #e1e0d9;
+    --baseline: #c3c2b7;
+    --border: rgba(11,11,11,0.10);
+
+    --actual: #eb6834;
+    --worst: #86b6ef;
+    --base: #3987e5;
+    --best: #1c5cab;
+    --compare-line: rgba(137, 135, 129, 0.4);
+    --crosshair: rgba(11, 11, 11, 0.28);
+    --shadow-card: 0 1px 2px rgba(11,11,11,0.05), 0 12px 28px -16px rgba(11,11,11,0.20);
+    --shadow-card-hover: 0 2px 4px rgba(11,11,11,0.06), 0 18px 36px -16px rgba(11,11,11,0.26);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --surface-1: #1a1a19;
+      --page: #0d0d0d;
+      --text-primary: #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted: #898781;
+      --gridline: #2c2c2a;
+      --baseline: #383835;
+      --border: rgba(255,255,255,0.10);
+      --actual: #d95926;
+      --worst: #9ec5f4;
+      --base: #3987e5;
+      --best: #184f95;
+      --compare-line: rgba(137, 135, 129, 0.4);
+      --crosshair: rgba(255, 255, 255, 0.24);
+      --shadow-card: 0 1px 2px rgba(0,0,0,0.3), 0 12px 28px -16px rgba(0,0,0,0.5);
+      --shadow-card-hover: 0 2px 4px rgba(0,0,0,0.35), 0 18px 36px -16px rgba(0,0,0,0.6);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --surface-1: #1a1a19;
+    --page: #0d0d0d;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #898781;
+    --gridline: #2c2c2a;
+    --baseline: #383835;
+    --border: rgba(255,255,255,0.10);
+    --actual: #d95926;
+    --worst: #9ec5f4;
+    --base: #3987e5;
+    --best: #184f95;
+    --compare-line: rgba(137, 135, 129, 0.4);
+    --crosshair: rgba(255, 255, 255, 0.24);
+    --shadow-card: 0 1px 2px rgba(0,0,0,0.3), 0 12px 28px -16px rgba(0,0,0,0.5);
+    --shadow-card-hover: 0 2px 4px rgba(0,0,0,0.35), 0 18px 36px -16px rgba(0,0,0,0.6);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--page);
+    color: var(--text-primary);
+    word-break: keep-all;
+    overflow-wrap: break-word;
+  }
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 24px 16px 64px;
+  }
+  header.page-header {
+    margin-bottom: 28px;
+    padding-left: 14px;
+    border-left: 4px solid var(--base);
+  }
+  .eyebrow {
+    display: block;
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    color: var(--base);
+    margin: 0 0 6px;
+  }
+  header.page-header h1 {
+    font-size: clamp(22px, 4vw, 30px);
+    margin: 0 0 6px;
+    letter-spacing: -0.01em;
+  }
+  .subtitle {
+    color: var(--text-secondary);
+    font-size: 14px;
+    margin: 0;
+  }
+  .data-as-of {
+    color: var(--text-muted);
+    font-size: 13px;
+    margin-top: 6px;
+  }
+
+  .card {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px;
+    box-shadow: var(--shadow-card);
+  }
+
+  .scenario-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  @media (max-width: 640px) {
+    .scenario-grid { grid-template-columns: 1fr; }
+  }
+  .scenario-card {
+    text-align: left;
+    position: relative;
+    overflow: hidden;
+    padding-top: 24px;
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+  }
+  .scenario-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 4px;
+    background: var(--accent, var(--base));
+  }
+  .scenario-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-card-hover);
+  }
+  .scenario-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .scenario-dot {
+    width: 9px; height: 9px; border-radius: 50%;
+    display: inline-block;
+    background: var(--accent, var(--base));
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent, var(--base)) 22%, transparent);
+  }
+  .scenario-value {
+    font-size: clamp(28px, 4vw, 36px);
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    margin: 10px 0 5px;
+    font-variant-numeric: tabular-nums;
+  }
+  .scenario-detail {
+    font-size: 12.5px;
+    color: var(--text-muted);
+    line-height: 1.5;
+  }
+  .scenario-delta {
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+
+  .section {
+    margin-bottom: 32px;
+  }
+  .section h2 {
+    font-size: 17px;
+    font-weight: 700;
+    margin: 0 0 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .section h2::before {
+    content: '';
+    width: 4px;
+    height: 16px;
+    border-radius: 2px;
+    background: var(--base);
+    display: inline-block;
+  }
+  .section .desc {
+    color: var(--text-secondary);
+    font-size: 13px;
+    margin: 0 0 14px;
+    padding-left: 12px;
+  }
+
+  .chart-card {
+    padding: 18px 14px 14px;
+  }
+  .chart-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+    padding: 2px 10px 14px;
+    font-size: 12.5px;
+    color: var(--text-secondary);
+  }
+  .chart-legend .legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-weight: 500;
+  }
+  .chart-legend .legend-swatch {
+    width: 18px;
+    height: 0;
+    border-top-width: 2.5px;
+    border-top-style: solid;
+    display: inline-block;
+  }
+  .chart-legend .legend-swatch.dashed {
+    border-top-style: dashed;
+  }
+  .chart-legend .legend-swatch.thin {
+    border-top-width: 1.5px;
+    opacity: 0.7;
+  }
+  .chart-wrap {
+    position: relative;
+    height: 360px;
+  }
+  @media (max-width: 640px) {
+    .chart-wrap { height: 300px; }
+  }
+
+  table.compare-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  table.compare-table th, table.compare-table td {
+    text-align: right;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--gridline);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  table.compare-table th:first-child, table.compare-table td:first-child {
+    text-align: left;
+    font-variant-numeric: normal;
+    white-space: normal;
+  }
+  table.compare-table thead th {
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    border-bottom: 1px solid var(--baseline);
+  }
+  table.compare-table tbody tr {
+    transition: background-color 0.12s ease;
+  }
+  table.compare-table tbody tr:nth-child(even) {
+    background: color-mix(in srgb, var(--text-primary) 3%, transparent);
+  }
+  table.compare-table tbody tr:hover {
+    background: color-mix(in srgb, var(--base) 8%, transparent);
+  }
+  table.compare-table tbody tr:first-child td {
+    font-weight: 600;
+  }
+  .table-scroll { overflow-x: auto; border-radius: 10px; }
+  .coverage-low { color: var(--text-muted); }
+  .weight-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-variant-numeric: tabular-nums;
+  }
+  .weight-track {
+    width: 52px;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--gridline);
+    overflow: hidden;
+  }
+  .weight-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: var(--base);
+  }
+
+  .methodology p {
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+    margin: 0 0 10px;
+  }
+  .methodology .disclaimer {
+    background: color-mix(in srgb, var(--worst) 12%, transparent);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 13px;
+    color: var(--text-primary);
+  }
+
+  #status-msg {
+    padding: 40px 16px;
+    text-align: center;
+    color: var(--text-secondary);
+  }
+  #app { display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="page-header">
+    <span class="eyebrow">Box Office Forecast</span>
+    <h1>영화 '호프(HOPE)' 최종 관객수 예측</h1>
+    <p class="subtitle">KOBIS 데이터 기반 유사 흥행작 비교 분석 — ATU Partners 투자 모니터링용</p>
+    <p class="data-as-of" id="data-as-of"></p>
+  </header>
+
+  <div id="status-msg">데이터 불러오는 중...</div>
+
+  <div id="app">
+    <section class="scenario-grid" id="scenario-grid"></section>
+
+    <section class="section">
+      <h2>호프 실적 &amp; 예측 궤적</h2>
+      <p class="desc">실선은 실제 관측된 누적 관객수, 점선은 유사 흥행작들의 흥행 곡선을 반영한 예측 궤적입니다.</p>
+      <div class="card chart-card">
+        <div class="chart-legend" id="trajectory-legend"></div>
+        <div class="chart-wrap"><canvas id="trajectory-chart"></canvas></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>비교군 흥행 곡선 대비</h2>
+      <p class="desc">개봉 후 경과일 대비 "당일 누적관객수 ÷ 최종 누적관객수" 비율입니다. 옅은 선은 유사도 상위 비교군, 굵은 선은 호프입니다.</p>
+      <div class="card chart-card">
+        <div class="chart-legend" id="curve-legend"></div>
+        <div class="chart-wrap"><canvas id="curve-chart"></canvas></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>비교군 데이터</h2>
+      <p class="desc">2023-01 ~ 현재 한국영화 중 누적 500만 명 이상, 흥행이 종료된 작품 기준입니다.</p>
+      <div class="card table-scroll">
+        <table class="compare-table" id="compare-table">
+          <thead>
+            <tr>
+              <th>영화명</th>
+              <th>개봉일</th>
+              <th>최종 누적관객수</th>
+              <th>D일차 배수</th>
+              <th>유사도 가중치</th>
+              <th>데이터 커버리지</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section methodology">
+      <h2>방법론 및 한계</h2>
+      <div class="card">
+        <p><strong>배수(멀티플) 예측법</strong>: 2023-01 이후 개봉한 한국영화 중 누적 500만 명 이상을 기록하고 흥행이 종료된 작품들을 비교군으로 삼습니다. 각 작품의 "개봉 후 D일차(호프의 현재 경과일) 누적관객수 대비 최종 누적관객수" 배수를 구하고, 장르·개봉 규모·개봉 시기 유사도로 가중치를 부여한 뒤, 가중 배수 분포의 25/50/75 백분위수를 각각 worst/base/best 시나리오로 사용합니다. 이 배수를 호프의 현재 누적관객수에 곱해 최종 관객수를 추정합니다.</p>
+          <p><strong>예측 궤적</strong>: 유사도 상위 비교군들의 정규화(0~1) 흥행 곡선을 가중 평균해 호프의 현재 시점 이후 곡선 형태를 추정하고, 현재 실측치에서 각 시나리오의 최종치로 자연스럽게 이어지도록 보정했습니다.</p>
+        <p id="methodology-note"></p>
+        <div class="disclaimer">
+          ⚠ KOBIS 무료 API는 날짜별 박스오피스 상위권(top20)만 제공합니다. 순위권 밖으로 밀려난 날짜의 관객수는 확인할 수 없어 마지막 관측치로 이월(carry-forward) 처리했습니다. 위 수치는 과거 흥행 패턴에 기반한 통계적 추정치이며, 실제 최종 관객수와 다를 수 있습니다.
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script id="embedded-analysis-data" type="application/json">{"generatedAt":"2026-07-26T05:21:54.129Z","dataAsOf":"2026-07-26","hope":{"movieCd":"20233219","openDate":"2026-07-15","anchorDay":11,"anchorDate":"2026-07-25","anchorAudiAcc":3129827,"dailySeries":[{"day":1,"date":"2026-07-15","audiCnt":333889,"audiAcc":351247},{"day":2,"date":"2026-07-16","audiCnt":274440,"audiAcc":625687},{"day":3,"date":"2026-07-17","audiCnt":594770,"audiAcc":1220457},{"day":4,"date":"2026-07-18","audiCnt":512176,"audiAcc":1732633},{"day":5,"date":"2026-07-19","audiCnt":397003,"audiAcc":2129636},{"day":6,"date":"2026-07-20","audiCnt":143062,"audiAcc":2272698},{"day":7,"date":"2026-07-21","audiCnt":128899,"audiAcc":2401597},{"day":8,"date":"2026-07-22","audiCnt":131739,"audiAcc":2533336},{"day":9,"date":"2026-07-23","audiCnt":115008,"audiAcc":2648344},{"day":10,"date":"2026-07-24","audiCnt":153912,"audiAcc":2802256},{"day":11,"date":"2026-07-25","audiCnt":327571,"audiAcc":3129827}]},"prediction":{"worst":{"multiple":1.3925,"finalAudience":4358254},"base":{"multiple":1.5874,"finalAudience":4968131},"best":{"multiple":1.7701,"finalAudience":5539983},"p10":{"multiple":1.3181,"finalAudience":4125425},"p90":{"multiple":2.0504,"finalAudience":6417320}},"comparableMovies":[{"movieNm":"밀수","movieCd":"20218541","openDt":"2023-07-26","genres":["액션"],"finalAudience":5123219,"similarityWeight":0.6314,"multipleAtAnchorDay":1.6053,"coverage":0.949},{"movieNm":"범죄도시3","movieCd":"20226411","openDt":"2023-05-31","genres":["범죄","액션"],"finalAudience":10675973,"similarityWeight":0.5726,"multipleAtAnchorDay":1.4622,"coverage":0.953},{"movieNm":"베테랑2","movieCd":"20239670","openDt":"2024-09-13","genres":["액션","범죄"],"finalAudience":7514196,"similarityWeight":0.5336,"multipleAtAnchorDay":1.3181,"coverage":0.962},{"movieNm":"범죄도시4","movieCd":"20228797","openDt":"2024-04-24","genres":["액션","범죄"],"finalAudience":11495435,"similarityWeight":0.487,"multipleAtAnchorDay":1.6165,"coverage":1},{"movieNm":"좀비딸","movieCd":"20241941","openDt":"2025-07-30","genres":["코미디","드라마"],"finalAudience":5641601,"similarityWeight":0.4268,"multipleAtAnchorDay":1.8657,"coverage":0.237},{"movieNm":"서울의 봄","movieCd":"20212866","openDt":"2023-11-22","genres":["드라마"],"finalAudience":13119454,"similarityWeight":0.3523,"multipleAtAnchorDay":3.2982,"coverage":0.866},{"movieNm":"파묘","movieCd":"20234675","openDt":"2024-02-22","genres":["미스터리","공포(호러)"],"finalAudience":11902097,"similarityWeight":0.3131,"multipleAtAnchorDay":1.9728,"coverage":0.988}],"normalizedCurves":[{"movieNm":"밀수","similarityWeight":0.6314,"curve":[{"day":1,"ratio":0.0701},{"day":2,"ratio":0.1071},{"day":3,"ratio":0.1519},{"day":4,"ratio":0.2443},{"day":5,"ratio":0.3367},{"day":6,"ratio":0.3861},{"day":7,"ratio":0.4342},{"day":8,"ratio":0.4719},{"day":9,"ratio":0.5071},{"day":10,"ratio":0.5481},{"day":11,"ratio":0.6229},{"day":12,"ratio":0.6901},{"day":13,"ratio":0.7159},{"day":14,"ratio":0.7392},{"day":15,"ratio":0.7543},{"day":16,"ratio":0.7671},{"day":17,"ratio":0.7854},{"day":18,"ratio":0.8187},{"day":19,"ratio":0.8501},{"day":20,"ratio":0.8732},{"day":21,"ratio":0.892},{"day":22,"ratio":0.8982},{"day":23,"ratio":0.9042},{"day":24,"ratio":0.9106},{"day":25,"ratio":0.9221},{"day":26,"ratio":0.9325},{"day":27,"ratio":0.9366},{"day":28,"ratio":0.9409},{"day":29,"ratio":0.9451},{"day":30,"ratio":0.9493},{"day":31,"ratio":0.9541},{"day":32,"ratio":0.9619},{"day":33,"ratio":0.969},{"day":34,"ratio":0.972},{"day":35,"ratio":0.9752},{"day":36,"ratio":0.9781},{"day":37,"ratio":0.9803},{"day":38,"ratio":0.9823},{"day":39,"ratio":0.9863},{"day":40,"ratio":0.99},{"day":41,"ratio":0.9914},{"day":42,"ratio":0.9927},{"day":43,"ratio":0.9934},{"day":44,"ratio":0.9943},{"day":45,"ratio":0.9952},{"day":46,"ratio":0.9967},{"day":47,"ratio":0.998},{"day":48,"ratio":0.9987},{"day":49,"ratio":0.9993},{"day":50,"ratio":0.9997},{"day":51,"ratio":1},{"day":52,"ratio":1},{"day":53,"ratio":1},{"day":54,"ratio":1},{"day":55,"ratio":1},{"day":56,"ratio":1},{"day":57,"ratio":1},{"day":58,"ratio":1},{"day":59,"ratio":1},{"day":60,"ratio":1}]},{"movieNm":"범죄도시3","similarityWeight":0.5726,"curve":[{"day":1,"ratio":0.1147},{"day":2,"ratio":0.1588},{"day":3,"ratio":0.2133},{"day":4,"ratio":0.3222},{"day":5,"ratio":0.4227},{"day":6,"ratio":0.4881},{"day":7,"ratio":0.567},{"day":8,"ratio":0.5871},{"day":9,"ratio":0.6051},{"day":10,"ratio":0.6301},{"day":11,"ratio":0.6839},{"day":12,"ratio":0.729},{"day":13,"ratio":0.7424},{"day":14,"ratio":0.7537},{"day":15,"ratio":0.7641},{"day":16,"ratio":0.774},{"day":17,"ratio":0.787},{"day":18,"ratio":0.8131},{"day":19,"ratio":0.8348},{"day":20,"ratio":0.8429},{"day":21,"ratio":0.8503},{"day":22,"ratio":0.858},{"day":23,"ratio":0.865},{"day":24,"ratio":0.8738},{"day":25,"ratio":0.8907},{"day":26,"ratio":0.9055},{"day":27,"ratio":0.9116},{"day":28,"ratio":0.9167},{"day":29,"ratio":0.9225},{"day":30,"ratio":0.9271},{"day":31,"ratio":0.9338},{"day":32,"ratio":0.946},{"day":33,"ratio":0.9571},{"day":34,"ratio":0.9611},{"day":35,"ratio":0.9648},{"day":36,"ratio":0.9679},{"day":37,"ratio":0.9707},{"day":38,"ratio":0.9745},{"day":39,"ratio":0.9812},{"day":40,"ratio":0.9867},{"day":41,"ratio":0.9887},{"day":42,"ratio":0.9905},{"day":43,"ratio":0.9913},{"day":44,"ratio":0.9922},{"day":45,"ratio":0.9932},{"day":46,"ratio":0.995},{"day":47,"ratio":0.9966},{"day":48,"ratio":0.9973},{"day":49,"ratio":0.998},{"day":50,"ratio":0.9984},{"day":51,"ratio":0.9987},{"day":52,"ratio":0.9987},{"day":53,"ratio":0.9994},{"day":54,"ratio":0.9998},{"day":55,"ratio":1},{"day":56,"ratio":1},{"day":57,"ratio":1},{"day":58,"ratio":1},{"day":59,"ratio":1},{"day":60,"ratio":1}]},{"movieNm":"베테랑2","similarityWeight":0.5336,"curve":[{"day":1,"ratio":0.0687},{"day":2,"ratio":0.1692},{"day":3,"ratio":0.2789},{"day":4,"ratio":0.3807},{"day":5,"ratio":0.4943},{"day":6,"ratio":0.5926},{"day":7,"ratio":0.6237},{"day":8,"ratio":0.6527},{"day":9,"ratio":0.7042},{"day":10,"ratio":0.7454},{"day":11,"ratio":0.7587},{"day":12,"ratio":0.7705},{"day":13,"ratio":0.7881},{"day":14,"ratio":0.7982},{"day":15,"ratio":0.8107},{"day":16,"ratio":0.8335},{"day":17,"ratio":0.8533},{"day":18,"ratio":0.8636},{"day":19,"ratio":0.8788},{"day":20,"ratio":0.8868},{"day":21,"ratio":0.9015},{"day":22,"ratio":0.91},{"day":23,"ratio":0.9217},{"day":24,"ratio":0.9316},{"day":25,"ratio":0.9353},{"day":26,"ratio":0.9399},{"day":27,"ratio":0.9488},{"day":28,"ratio":0.9518},{"day":29,"ratio":0.9567},{"day":30,"ratio":0.9646},{"day":31,"ratio":0.9713},{"day":32,"ratio":0.9739},{"day":33,"ratio":0.9766},{"day":34,"ratio":0.9787},{"day":35,"ratio":0.9803},{"day":36,"ratio":0.9831},{"day":37,"ratio":0.987},{"day":38,"ratio":0.9903},{"day":39,"ratio":0.9915},{"day":40,"ratio":0.9929},{"day":41,"ratio":0.9936},{"day":42,"ratio":0.9942},{"day":43,"ratio":0.9951},{"day":44,"ratio":0.9963},{"day":45,"ratio":0.9983},{"day":46,"ratio":0.9988},{"day":47,"ratio":0.9994},{"day":48,"ratio":0.9994},{"day":49,"ratio":1},{"day":50,"ratio":1},{"day":51,"ratio":1},{"day":52,"ratio":1},{"day":53,"ratio":1},{"day":54,"ratio":1},{"day":55,"ratio":1},{"day":56,"ratio":1},{"day":57,"ratio":1},{"day":58,"ratio":1},{"day":59,"ratio":1},{"day":60,"ratio":1}]},{"movieNm":"범죄도시4","similarityWeight":0.487,"curve":[{"day":1,"ratio":0.075},{"day":2,"ratio":0.1161},{"day":3,"ratio":0.1728},{"day":4,"ratio":0.2788},{"day":5,"ratio":0.37},{"day":6,"ratio":0.4015},{"day":7,"ratio":0.4354},{"day":8,"ratio":0.5037},{"day":9,"ratio":0.5255},{"day":10,"ratio":0.5586},{"day":11,"ratio":0.6186},{"day":12,"ratio":0.6927},{"day":13,"ratio":0.7455},{"day":14,"ratio":0.7584},{"day":15,"ratio":0.7693},{"day":16,"ratio":0.7795},{"day":17,"ratio":0.7935},{"day":18,"ratio":0.8221},{"day":19,"ratio":0.8471},{"day":20,"ratio":0.8547},{"day":21,"ratio":0.8644},{"day":22,"ratio":0.8847},{"day":23,"ratio":0.8909},{"day":24,"ratio":0.8988},{"day":25,"ratio":0.9145},{"day":26,"ratio":0.9273},{"day":27,"ratio":0.9318},{"day":28,"ratio":0.9356},{"day":29,"ratio":0.9389},{"day":30,"ratio":0.9418},{"day":31,"ratio":0.9461},{"day":32,"ratio":0.954},{"day":33,"ratio":0.9609},{"day":34,"ratio":0.9635},{"day":35,"ratio":0.9657},{"day":36,"ratio":0.9683},{"day":37,"ratio":0.97},{"day":38,"ratio":0.9726},{"day":39,"ratio":0.977},{"day":40,"ratio":0.9807},{"day":41,"ratio":0.982},{"day":42,"ratio":0.9833},{"day":43,"ratio":0.9846},{"day":44,"ratio":0.9873},{"day":45,"ratio":0.9892},{"day":46,"ratio":0.9917},{"day":47,"ratio":0.9936},{"day":48,"ratio":0.9943},{"day":49,"ratio":0.995},{"day":50,"ratio":0.9953},{"day":51,"ratio":0.9957},{"day":52,"ratio":0.9963},{"day":53,"ratio":0.9971},{"day":54,"ratio":0.9977},{"day":55,"ratio":0.9981},{"day":56,"ratio":0.9985},{"day":57,"ratio":0.9988},{"day":58,"ratio":0.9991},{"day":59,"ratio":0.9992},{"day":60,"ratio":0.9995}]},{"movieNm":"좀비딸","similarityWeight":0.4268,"curve":[{"day":1,"ratio":0.0819},{"day":2,"ratio":0.1246},{"day":3,"ratio":0.1725},{"day":4,"ratio":0.2575},{"day":5,"ratio":0.3312},{"day":6,"ratio":0.364},{"day":7,"ratio":0.3937},{"day":8,"ratio":0.4206},{"day":9,"ratio":0.4446},{"day":10,"ratio":0.4732},{"day":11,"ratio":0.536},{"day":12,"ratio":0.5936},{"day":13,"ratio":0.6122},{"day":14,"ratio":0.63},{"day":15,"ratio":0.646},{"day":16,"ratio":0.6657},{"day":17,"ratio":0.7172},{"day":18,"ratio":0.7636},{"day":19,"ratio":0.801},{"day":20,"ratio":0.8118},{"day":21,"ratio":0.8214},{"day":22,"ratio":0.8303},{"day":23,"ratio":0.8387},{"day":24,"ratio":0.8472},{"day":25,"ratio":0.8679},{"day":26,"ratio":0.8869},{"day":27,"ratio":0.892},{"day":28,"ratio":0.8969},{"day":29,"ratio":0.9071},{"day":30,"ratio":0.9121},{"day":31,"ratio":0.9184},{"day":32,"ratio":0.9339},{"day":33,"ratio":0.9478},{"day":34,"ratio":0.9509},{"day":35,"ratio":0.9539},{"day":36,"ratio":0.9565},{"day":37,"ratio":0.9588},{"day":38,"ratio":0.9616},{"day":39,"ratio":0.9684},{"day":40,"ratio":0.9743},{"day":41,"ratio":0.9755},{"day":42,"ratio":0.9769},{"day":43,"ratio":0.9787},{"day":44,"ratio":0.9799},{"day":45,"ratio":0.9813},{"day":46,"ratio":0.985},{"day":47,"ratio":0.9882},{"day":48,"ratio":0.9891},{"day":49,"ratio":0.9899},{"day":50,"ratio":0.9908},{"day":51,"ratio":0.9916},{"day":52,"ratio":0.9916},{"day":53,"ratio":0.9935},{"day":54,"ratio":0.9947},{"day":55,"ratio":0.9952},{"day":56,"ratio":0.9952},{"day":57,"ratio":0.9958},{"day":58,"ratio":0.9963},{"day":59,"ratio":0.9965},{"day":60,"ratio":0.9965}]},{"movieNm":"서울의 봄","similarityWeight":0.3523,"curve":[{"day":1,"ratio":0.0167},{"day":2,"ratio":0.0304},{"day":3,"ratio":0.0513},{"day":4,"ratio":0.0966},{"day":5,"ratio":0.1443},{"day":6,"ratio":0.1625},{"day":7,"ratio":0.1802},{"day":8,"ratio":0.2067},{"day":9,"ratio":0.2251},{"day":10,"ratio":0.2498},{"day":11,"ratio":0.3032},{"day":12,"ratio":0.3548},{"day":13,"ratio":0.3712},{"day":14,"ratio":0.3863},{"day":15,"ratio":0.4018},{"day":16,"ratio":0.4171},{"day":17,"ratio":0.4392},{"day":18,"ratio":0.4869},{"day":19,"ratio":0.5314},{"day":20,"ratio":0.5459},{"day":21,"ratio":0.5612},{"day":22,"ratio":0.5756},{"day":23,"ratio":0.5891},{"day":24,"ratio":0.6096},{"day":25,"ratio":0.6475},{"day":26,"ratio":0.6815},{"day":27,"ratio":0.6923},{"day":28,"ratio":0.7027},{"day":29,"ratio":0.7103},{"day":30,"ratio":0.7182},{"day":31,"ratio":0.7291},{"day":32,"ratio":0.7522},{"day":33,"ratio":0.7857},{"day":34,"ratio":0.8183},{"day":35,"ratio":0.8281},{"day":36,"ratio":0.8387},{"day":37,"ratio":0.8472},{"day":38,"ratio":0.8592},{"day":39,"ratio":0.8787},{"day":40,"ratio":0.9036},{"day":41,"ratio":0.9236},{"day":42,"ratio":0.9288},{"day":43,"ratio":0.9326},{"day":44,"ratio":0.9361},{"day":45,"ratio":0.9402},{"day":46,"ratio":0.9484},{"day":47,"ratio":0.9558},{"day":48,"ratio":0.9583},{"day":49,"ratio":0.9605},{"day":50,"ratio":0.9623},{"day":51,"ratio":0.964},{"day":52,"ratio":0.9661},{"day":53,"ratio":0.9704},{"day":54,"ratio":0.9743},{"day":55,"ratio":0.976},{"day":56,"ratio":0.9774},{"day":57,"ratio":0.9786},{"day":58,"ratio":0.9799},{"day":59,"ratio":0.9814},{"day":60,"ratio":0.9843}]},{"movieNm":"파묘","similarityWeight":0.3131,"curve":[{"day":1,"ratio":0.0282},{"day":2,"ratio":0.0597},{"day":3,"ratio":0.1245},{"day":4,"ratio":0.1934},{"day":5,"ratio":0.221},{"day":6,"ratio":0.246},{"day":7,"ratio":0.2783},{"day":8,"ratio":0.3106},{"day":9,"ratio":0.3822},{"day":10,"ratio":0.4521},{"day":11,"ratio":0.5069},{"day":12,"ratio":0.5244},{"day":13,"ratio":0.5404},{"day":14,"ratio":0.5551},{"day":15,"ratio":0.5685},{"day":16,"ratio":0.589},{"day":17,"ratio":0.636},{"day":18,"ratio":0.6757},{"day":19,"ratio":0.687},{"day":20,"ratio":0.6973},{"day":21,"ratio":0.7068},{"day":22,"ratio":0.7156},{"day":23,"ratio":0.7283},{"day":24,"ratio":0.7573},{"day":25,"ratio":0.7812},{"day":26,"ratio":0.7882},{"day":27,"ratio":0.7942},{"day":28,"ratio":0.8001},{"day":29,"ratio":0.8058},{"day":30,"ratio":0.815},{"day":31,"ratio":0.8373},{"day":32,"ratio":0.8578},{"day":33,"ratio":0.8653},{"day":34,"ratio":0.872},{"day":35,"ratio":0.8798},{"day":36,"ratio":0.8855},{"day":37,"ratio":0.8929},{"day":38,"ratio":0.9083},{"day":39,"ratio":0.9206},{"day":40,"ratio":0.9245},{"day":41,"ratio":0.9277},{"day":42,"ratio":0.9313},{"day":43,"ratio":0.9342},{"day":44,"ratio":0.9382},{"day":45,"ratio":0.9462},{"day":46,"ratio":0.9524},{"day":47,"ratio":0.9545},{"day":48,"ratio":0.9572},{"day":49,"ratio":0.9632},{"day":50,"ratio":0.965},{"day":51,"ratio":0.9675},{"day":52,"ratio":0.972},{"day":53,"ratio":0.9758},{"day":54,"ratio":0.9775},{"day":55,"ratio":0.9788},{"day":56,"ratio":0.9801},{"day":57,"ratio":0.9813},{"day":58,"ratio":0.983},{"day":59,"ratio":0.9872},{"day":60,"ratio":0.9902}]}],"projectedTrajectory":[{"day":12,"date":"2026-07-26","worst":3277553,"base":3350895,"best":3419664},{"day":13,"date":"2026-07-27","worst":3349886,"base":3459139,"best":3561580},{"day":14,"date":"2026-07-28","worst":3396723,"base":3529229,"best":3653473},{"day":15,"date":"2026-07-29","worst":3437590,"base":3590385,"best":3733654},{"day":16,"date":"2026-07-30","worst":3485104,"base":3661488,"best":3826875},{"day":17,"date":"2026-07-31","worst":3560291,"base":3774003,"best":3974391},{"day":18,"date":"2026-08-01","worst":3657393,"base":3919313,"best":4164904},{"day":19,"date":"2026-08-02","worst":3738950,"base":4041362,"best":4324918},{"day":20,"date":"2026-08-03","worst":3776269,"base":4097208,"best":4398137},{"day":21,"date":"2026-08-04","worst":3814519,"base":4154447,"best":4473182},{"day":22,"date":"2026-08-05","worst":3846478,"base":4202274,"best":4535886},{"day":23,"date":"2026-08-06","worst":3873792,"base":4243149,"best":4589476},{"day":24,"date":"2026-08-07","worst":3909255,"base":4296217,"best":4659053},{"day":25,"date":"2026-08-08","worst":3961536,"base":4374454,"best":4761628},{"day":26,"date":"2026-08-09","worst":4004315,"base":4438471,"best":4845559},{"day":27,"date":"2026-08-10","worst":4023731,"base":4467527,"best":4883654},{"day":28,"date":"2026-08-11","worst":4039249,"base":4490749,"best":4914099},{"day":29,"date":"2026-08-12","worst":4056924,"base":4517200,"best":4948779},{"day":30,"date":"2026-08-13","worst":4074322,"base":4543236,"best":4982913},{"day":31,"date":"2026-08-14","worst":4098541,"base":4579478,"best":5030430},{"day":32,"date":"2026-08-15","worst":4134169,"base":4632794,"best":5100331},{"day":33,"date":"2026-08-16","worst":4167384,"base":4682499,"best":5165498},{"day":34,"date":"2026-08-17","worst":4187353,"base":4712383,"best":5204678},{"day":35,"date":"2026-08-18","worst":4199663,"base":4730805,"best":5228830},{"day":36,"date":"2026-08-19","worst":4211746,"base":4748886,"best":5252537},{"day":37,"date":"2026-08-20","worst":4223085,"base":4765854,"best":5274782},{"day":38,"date":"2026-08-21","worst":4238622,"base":4789105,"best":5305266},{"day":39,"date":"2026-08-22","worst":4259792,"base":4820785,"best":5346802},{"day":40,"date":"2026-08-23","worst":4278895,"base":4849373,"best":5384283},{"day":41,"date":"2026-08-24","worst":4289677,"base":4865508,"best":5405436},{"day":42,"date":"2026-08-25","worst":4295592,"base":4874359,"best":5417041},{"day":43,"date":"2026-08-26","worst":4300267,"base":4881356,"best":5426214},{"day":44,"date":"2026-08-27","worst":4305880,"base":4889755,"best":5437226},{"day":45,"date":"2026-08-28","worst":4313021,"base":4900441,"best":5451237},{"day":46,"date":"2026-08-29","worst":4322200,"base":4914177,"best":5469245},{"day":47,"date":"2026-08-30","worst":4329278,"base":4924769,"best":5483132},{"day":48,"date":"2026-08-31","worst":4332341,"base":4929352,"best":5489141},{"day":49,"date":"2026-09-01","worst":4336465,"base":4935524,"best":5497233},{"day":50,"date":"2026-09-02","worst":4338519,"base":4938599,"best":5501264},{"day":51,"date":"2026-09-03","worst":4340639,"base":4941770,"best":5505422},{"day":52,"date":"2026-09-04","worst":4342908,"base":4945166,"best":5509875},{"day":53,"date":"2026-09-05","worst":4346912,"base":4951158,"best":5517730},{"day":54,"date":"2026-09-06","worst":4349645,"base":4955248,"best":5523093},{"day":55,"date":"2026-09-07","worst":4351067,"base":4957375,"best":5525881},{"day":56,"date":"2026-09-08","worst":4352085,"base":4958899,"best":5527879},{"day":57,"date":"2026-09-09","worst":4353201,"base":4960570,"best":5530069},{"day":58,"date":"2026-09-10","worst":4354456,"base":4962448,"best":5532532},{"day":59,"date":"2026-09-11","worst":4356295,"base":4965199,"best":5536139},{"day":60,"date":"2026-09-12","worst":4358254,"base":4968131,"best":5539983}],"methodology":{"minFinalAudience":5000000,"finishedGapDays":14,"curveMaxDay":60,"weights":{"genre":0.45,"scale":0.35,"season":0.2},"note":"KOBIS 일별 박스오피스(top20)만 관측 가능하므로, 순위권 밖으로 밀려난 구간은 결측되어 마지막 관측치를 이월(carry-forward)했다. 배수는 각 비교군의 개봉 후 D일차 누적관객수 대비 최종 누적관객수 비율이며, 유사도 가중 백분위(25/50/75)로 worst/base/best를 산출했다."}}</script>
+<script>
+const numFmt = new Intl.NumberFormat('ko-KR');
+function fmtNum(n) { return n == null ? '-' : numFmt.format(Math.round(n)); }
+function fmtPct(n) { return n == null ? '-' : (n * 100).toFixed(1) + '%'; }
+function fmtCompact(n) {
+  if (n == null) return '-';
+  if (n >= 10000) return (n / 10000).toFixed(1).replace(/\.0$/, '') + '만';
+  return fmtNum(n);
+}
+
+// 차트 위 어떤 색이 어떤 트래커인지 바로 보이도록 캔버스 범례 대신 HTML 범례를 그린다.
+function renderLegend(containerId, items) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  el.innerHTML = items.map(it => `
+    <span class="legend-item">
+      <span class="legend-swatch${it.dashed ? ' dashed' : ''}${it.thin ? ' thin' : ''}" style="border-top-color:${it.color}"></span>
+      ${it.label}
+    </span>
+  `).join('');
+}
+
+// 호버 시 X축 위치에 수직 크로스헤어를 그리는 공용 Chart.js 플러그인
+const crosshairPlugin = {
+  id: 'crosshair',
+  afterDatasetsDraw(chart) {
+    const active = chart.getActiveElements();
+    if (!active || !active.length) return;
+    const { ctx, chartArea } = chart;
+    const x = active[0].element.x;
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(x, chartArea.top);
+    ctx.lineTo(x, chartArea.bottom);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = getComputedStyle(document.body).getPropertyValue('--crosshair').trim();
+    ctx.stroke();
+    ctx.restore();
+  },
+};
+
+async function main() {
+  let data;
+  const embedded = document.getElementById('embedded-analysis-data');
+  let embeddedData = null;
+  if (embedded && embedded.textContent.trim()) {
+    try { embeddedData = JSON.parse(embedded.textContent); } catch (e) { embeddedData = null; }
+  }
+  if (embeddedData) {
+    // index.html에 데이터가 직접 내장되어 있으면(analyze.js가 매번 갱신) 서버 없이 file://로 열어도 동작한다.
+    data = embeddedData;
+  } else {
+    try {
+      const res = await fetch('data/analysis.json', { cache: 'no-store' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      data = await res.json();
+    } catch (e) {
+      document.getElementById('status-msg').textContent =
+        '데이터를 불러오지 못했습니다 (' + e.message + '). ' +
+        'analyze.js를 실행해 data/analysis.json을 생성했는지, 정적 서버로 열었는지 확인하세요.';
+      return;
+    }
+  }
+
+  document.getElementById('status-msg').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+
+  const genDate = new Date(data.generatedAt);
+  document.getElementById('data-as-of').textContent =
+    `데이터 기준일: ${data.dataAsOf} · 분석 생성: ${genDate.toLocaleString('ko-KR')}`;
+
+  renderScenarioCards(data);
+  renderTrajectoryChart(data);
+  renderCurveChart(data);
+  renderCompareTable(data);
+  document.getElementById('methodology-note').textContent =
+    `비교군 ${data.comparableMovies.length}편, 앵커일 D+${data.hope.anchorDay}일(${data.hope.anchorDate} 기준) 실측 누적관객수 ${fmtNum(data.hope.anchorAudiAcc)}명을 기준으로 계산했습니다.`;
+}
+
+function renderScenarioCards(data) {
+  const grid = document.getElementById('scenario-grid');
+  const basefinal = data.prediction.base.finalAudience;
+  const scenarios = [
+    { key: 'worst', label: 'Worst', accent: '--worst', percentile: 'P25' },
+    { key: 'base', label: 'Base', accent: '--base', percentile: 'P50(중앙값)' },
+    { key: 'best', label: 'Best', accent: '--best', percentile: 'P75' },
+  ];
+  grid.innerHTML = scenarios.map(s => {
+    const p = data.prediction[s.key];
+    const delta = (p.finalAudience - basefinal) / basefinal;
+    const deltaText = s.key === 'base'
+      ? '기준 시나리오'
+      : `Base 대비 <span class="scenario-delta">${delta > 0 ? '+' : ''}${(delta * 100).toFixed(1)}%</span>`;
+    return `
+      <div class="card scenario-card" style="--accent:var(${s.accent})">
+        <span class="scenario-label"><span class="scenario-dot"></span>${s.label} 시나리오</span>
+        <div class="scenario-value">${fmtNum(p.finalAudience)}명</div>
+        <div class="scenario-detail">배수 ×${p.multiple.toFixed(2)} · 비교군 ${s.percentile} 기준<br>${deltaText}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function hexToRgba(hex, alpha) {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+// 그 시리즈의 마지막 실측/예측 포인트(널이 아닌 마지막 값)에만 마커를 그려 끝점을 강조한다.
+// data 배열은 날짜 정렬을 맞추기 위해 앞뒤에 null로 패딩되어 있을 수 있어 배열의 물리적 끝이 아니라
+// "널이 아닌 마지막 인덱스"를 찾아야 한다.
+function endPointRadius(context) {
+  const values = context.dataset.data;
+  const idx = context.dataIndex;
+  const point = values[idx];
+  if (point == null || point.y == null) return 0;
+  for (let i = idx + 1; i < values.length; i++) {
+    const v = values[i];
+    if (v != null && v.y != null) return 0;
+  }
+  return 5;
+}
+
+function renderTrajectoryChart(data) {
+  const ctx = document.getElementById('trajectory-chart');
+  const anchorDay = data.hope.anchorDay;
+  const anchorVal = data.hope.anchorAudiAcc;
+  const maxDay = data.projectedTrajectory.length
+    ? data.projectedTrajectory[data.projectedTrajectory.length - 1].day
+    : anchorDay;
+
+  const audiAccByDay = new Map(data.hope.dailySeries.map(d => [d.day, d.audiAcc]));
+  const projByDay = new Map(data.projectedTrajectory.map(p => [p.day, p]));
+
+  // 4개 시리즈가 day 1~maxDay에 대해 동일한 배열 인덱스를 갖도록 맞춘다.
+  // Chart.js의 interaction mode:'index'는 데이터셋 간 배열 위치(인덱스)를 기준으로 정렬하기 때문에,
+  // 길이가 다른 배열(실측 11개 vs 예측 50개)을 그대로 넣으면 호버 시 날짜가 어긋나 건너뛰는 문제가 생긴다.
+  const actualPoints = [];
+  const bestPoints = [];
+  const basePoints = [];
+  const worstPoints = [];
+  for (let day = 1; day <= maxDay; day++) {
+    actualPoints.push({ x: day, y: audiAccByDay.has(day) ? audiAccByDay.get(day) : null });
+    if (day < anchorDay) {
+      bestPoints.push({ x: day, y: null });
+      basePoints.push({ x: day, y: null });
+      worstPoints.push({ x: day, y: null });
+    } else if (day === anchorDay) {
+      bestPoints.push({ x: day, y: anchorVal });
+      basePoints.push({ x: day, y: anchorVal });
+      worstPoints.push({ x: day, y: anchorVal });
+    } else {
+      const p = projByDay.get(day);
+      bestPoints.push({ x: day, y: p ? p.best : null });
+      basePoints.push({ x: day, y: p ? p.base : null });
+      worstPoints.push({ x: day, y: p ? p.worst : null });
+    }
+  }
+
+  const styleVar = (name) => getComputedStyle(document.body).getPropertyValue(name).trim();
+  const surface = styleVar('--surface-1');
+
+  const endLabelPlugin = {
+    id: 'trajectoryEndLabels',
+    afterDatasetsDraw(chart) {
+      const { ctx: c } = chart;
+      chart.data.datasets.forEach((ds, i) => {
+        if (!ds.endLabel) return;
+        const meta = chart.getDatasetMeta(i);
+        const last = meta.data[meta.data.length - 1];
+        if (!last) return;
+        c.save();
+        c.font = '600 11.5px system-ui, -apple-system, "Segoe UI", sans-serif';
+        c.fillStyle = ds.borderColor;
+        c.textBaseline = 'middle';
+        c.textAlign = 'left';
+        c.fillText(ds.endLabel, last.x + 8, last.y);
+        c.restore();
+      });
+    },
+  };
+
+  renderLegend('trajectory-legend', [
+    { label: '실제 누적관객수', color: styleVar('--actual') },
+    { label: 'Best 예측', color: styleVar('--best'), dashed: true },
+    { label: 'Base 예측', color: styleVar('--base'), dashed: true },
+    { label: 'Worst 예측', color: styleVar('--worst'), dashed: true },
+  ]);
+
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      datasets: [
+        {
+          label: '실제 누적관객수',
+          data: actualPoints,
+          borderColor: styleVar('--actual'),
+          backgroundColor: hexToRgba(styleVar('--actual'), 0.1),
+          borderWidth: 2.5,
+          borderCapStyle: 'round',
+          borderJoinStyle: 'round',
+          pointRadius: endPointRadius,
+          pointBackgroundColor: styleVar('--actual'),
+          pointBorderColor: surface,
+          pointBorderWidth: 2,
+          fill: 'origin',
+          tension: 0.15,
+        },
+        {
+          label: 'Best 예측',
+          data: bestPoints,
+          borderColor: styleVar('--best'),
+          borderWidth: 2,
+          borderDash: [6, 4],
+          borderCapStyle: 'round',
+          pointRadius: endPointRadius,
+          pointBackgroundColor: styleVar('--best'),
+          pointBorderColor: surface,
+          pointBorderWidth: 2,
+          tension: 0.15,
+          endLabel: fmtCompact(data.prediction.best.finalAudience) + '명',
+        },
+        {
+          label: 'Base 예측',
+          data: basePoints,
+          borderColor: styleVar('--base'),
+          borderWidth: 2,
+          borderDash: [6, 4],
+          borderCapStyle: 'round',
+          pointRadius: endPointRadius,
+          pointBackgroundColor: styleVar('--base'),
+          pointBorderColor: surface,
+          pointBorderWidth: 2,
+          tension: 0.15,
+          endLabel: fmtCompact(data.prediction.base.finalAudience) + '명',
+        },
+        {
+          label: 'Worst 예측',
+          data: worstPoints,
+          borderColor: styleVar('--worst'),
+          borderWidth: 2,
+          borderDash: [6, 4],
+          borderCapStyle: 'round',
+          pointRadius: endPointRadius,
+          pointBackgroundColor: styleVar('--worst'),
+          pointBorderColor: surface,
+          pointBorderWidth: 2,
+          tension: 0.15,
+          endLabel: fmtCompact(data.prediction.worst.finalAudience) + '명',
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      layout: { padding: { right: 82 } },
+      interaction: { mode: 'index', axis: 'x', intersect: false },
+      scales: {
+        x: {
+          type: 'linear',
+          title: { display: true, text: '개봉 후 경과일', color: styleVar('--text-muted') },
+          grid: { color: styleVar('--gridline') },
+          ticks: { color: styleVar('--text-muted') },
+        },
+        y: {
+          title: { display: true, text: '누적 관객수', color: styleVar('--text-muted') },
+          grid: { color: styleVar('--gridline') },
+          ticks: { color: styleVar('--text-muted'), callback: (v) => fmtNum(v) },
+        },
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: surface,
+          titleColor: styleVar('--text-primary'),
+          bodyColor: styleVar('--text-secondary'),
+          borderColor: styleVar('--border'),
+          borderWidth: 1,
+          padding: 10,
+          usePointStyle: true,
+          filter: (item) => item.parsed.y != null,
+          callbacks: {
+            title: (items) => `개봉 후 D+${items[0].parsed.x}일`,
+            label: (c) => `${c.dataset.label}: ${fmtNum(c.parsed.y)}명`,
+          },
+        },
+      },
+    },
+    plugins: [crosshairPlugin, endLabelPlugin],
+  });
+}
+
+function renderCurveChart(data) {
+  const ctx = document.getElementById('curve-chart');
+  const styleVar = (name) => getComputedStyle(document.body).getPropertyValue(name).trim();
+  const surface = styleVar('--surface-1');
+
+  const compareDatasets = data.normalizedCurves.map((c) => ({
+    label: c.movieNm,
+    data: c.curve.map(p => ({ x: p.day, y: p.ratio })),
+    borderColor: styleVar('--compare-line'),
+    borderWidth: 1.5,
+    borderCapStyle: 'round',
+    pointRadius: 0,
+    tension: 0.1,
+    order: 2,
+  }));
+
+  // 호프의 실측 구간 비율(base 시나리오 최종치 대비)을 강조선으로 표시
+  const hopeRatioBase = data.hope.dailySeries.map(d => ({
+    x: d.day,
+    y: d.audiAcc != null ? d.audiAcc / data.prediction.base.finalAudience : null,
+  }));
+
+  const hopeEndLabelPlugin = {
+    id: 'hopeCurveEndLabel',
+    afterDatasetsDraw(chart) {
+      const meta = chart.getDatasetMeta(chart.data.datasets.length - 1);
+      const last = meta.data[meta.data.length - 1];
+      if (!last) return;
+      const { ctx: c } = chart;
+      c.save();
+      c.font = '700 12px system-ui, -apple-system, "Segoe UI", sans-serif';
+      c.fillStyle = styleVar('--actual');
+      c.textBaseline = 'middle';
+      c.textAlign = 'left';
+      c.fillText('호프', last.x + 8, last.y);
+      c.restore();
+    },
+  };
+
+  renderLegend('curve-legend', [
+    { label: '호프 (base 예측 대비 실측 비율)', color: styleVar('--actual') },
+    { label: '비교군 (유사도 상위)', color: styleVar('--compare-line'), thin: true },
+  ]);
+
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      datasets: [
+        ...compareDatasets,
+        {
+          label: '호프 (base 예측 대비 실측 비율)',
+          data: hopeRatioBase,
+          borderColor: styleVar('--actual'),
+          borderWidth: 3,
+          borderCapStyle: 'round',
+          pointRadius: endPointRadius,
+          pointBackgroundColor: styleVar('--actual'),
+          pointBorderColor: surface,
+          pointBorderWidth: 2,
+          tension: 0.15,
+          order: 1,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      layout: { padding: { right: 36 } },
+      interaction: { mode: 'nearest', axis: 'x', intersect: false },
+      scales: {
+        x: {
+          type: 'linear',
+          title: { display: true, text: '개봉 후 경과일', color: styleVar('--text-muted') },
+          grid: { color: styleVar('--gridline') },
+          ticks: { color: styleVar('--text-muted') },
+        },
+        y: {
+          title: { display: true, text: '누적관객수 ÷ 최종누적관객수', color: styleVar('--text-muted') },
+          min: 0,
+          grid: { color: styleVar('--gridline') },
+          ticks: { color: styleVar('--text-muted'), callback: (v) => fmtPct(v) },
+        },
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: surface,
+          titleColor: styleVar('--text-primary'),
+          bodyColor: styleVar('--text-secondary'),
+          borderColor: styleVar('--border'),
+          borderWidth: 1,
+          padding: 10,
+          callbacks: {
+            title: (items) => `개봉 후 D+${items[0].parsed.x}일`,
+            label: (c) => `${c.dataset.label}: ${fmtPct(c.parsed.y)}`,
+          },
+        },
+      },
+    },
+    plugins: [crosshairPlugin, hopeEndLabelPlugin],
+  });
+}
+
+function renderCompareTable(data) {
+  const tbody = document.querySelector('#compare-table tbody');
+  tbody.innerHTML = data.comparableMovies.map(m => `
+    <tr>
+      <td>${m.movieNm}</td>
+      <td>${m.openDt}</td>
+      <td>${fmtNum(m.finalAudience)}</td>
+      <td>${m.multipleAtAnchorDay != null ? '×' + m.multipleAtAnchorDay.toFixed(2) : '-'}</td>
+      <td>
+        <span class="weight-cell">
+          <span class="weight-track"><span class="weight-fill" style="width:${(m.similarityWeight * 100).toFixed(0)}%"></span></span>
+          <span>${m.similarityWeight.toFixed(2)}</span>
+        </span>
+      </td>
+      <td class="${m.coverage < 0.5 ? 'coverage-low' : ''}">${fmtPct(m.coverage)}</td>
+    </tr>
+  `).join('');
+}
+
+main();
+</script>
+</body>
+</html>
